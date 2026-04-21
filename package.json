@@ -1,0 +1,33 @@
+{
+  "name": "mesh-chat-p2p",
+  "version": "1.0.0",
+  "description": "P2P real-time chat + file transfer using WebRTC. No server required. Works on LAN and internet.",
+  "main": "index.html",
+  "scripts": {
+    "start": "open index.html"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sikyungbin/TempChat.git"
+  },
+  "keywords": [
+    "p2p",
+    "webrtc",
+    "chat",
+    "file-transfer",
+    "real-time",
+    "messaging",
+    "peerjs",
+    "no-server"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/sikyungbin/TempChat/issues"
+  },
+  "homepage": "https://github.com/sikyungbin/TempChat/#readme",
+  "cdn": {
+    "peerjs": "https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js",
+    "fonts": "https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+  }
+}
