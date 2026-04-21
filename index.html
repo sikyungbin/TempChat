@@ -557,4 +557,501 @@ function esc(s) {
 }
 </script>
 </body>
+</html>.msg-time{font-size:9px;color:var(--t3);margin-top:3px;font-family:var(--mono)}
+.inp-area{padding:10px 20px 15px;border-top:1px solid var(--border);background:var(--s1);flex-shrink:0}
+.inp-wrap{display:flex;gap:8px}
+.inp{flex:1;padding:9px 12px;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--font);font-size:12px;outline:none;resize:none;max-height:80px}
+.inp:focus{border-color:var(--accent)}
+.send{width:34px;height:34px;border-radius:9px;border:none;background:linear-gradient(135deg,var(--accent),var(--a2));color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.send:hover{opacity:.9}
+.hint{font-size:9px;color:var(--t3);text-align:center;margin-top:6px}
+</style>
+</head>
+<body>
+
+<div id="setup">
+  <div class="card">
+    <div class="logo">
+      <div class="logo-t">Mesh Chat</div>
+      <div class="logo-s">P2P 채팅 + 파일 전송</div>
+    </div>
+
+    <div class="field">
+      <label>닉네임</label>
+      <input id="uname" type="text" placeholder="예: 경빈">
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab(0)">만들기</button>
+      <button class="tab-btn" onclick="switchTab(1)">참가</button>
+      <button class="tab-btn" onclick="switchTab(2)">목록</button>
+    </div>
+
+    <div id="tab0" class="tab-panel active">
+      <div class="field">
+        <label>방 이름</label>
+        <input id="c-nm" type="text" placeholder="팀 회의" maxlength="30">
+      </div>
+      <div class="field">
+        <label>참여 코드</label>
+        <input id="c-code" type="text" placeholder="team01" maxlength="15">
+      </div>
+      <div class="field">
+        <label>비밀번호 (선택)</label>
+        <input id="c-pwd" type="password">
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:10px">
+        <input id="c-pub" type="checkbox">
+        <span>공개 방으로 설정</span>
+      </label>
+      <button class="btn" onclick="createRoom()">방 생성</button>
+    </div>
+
+    <div id="tab1" class="tab-panel">
+      <div class="field">
+        <label>참여 코드</label>
+        <input id="j-code" type="text" placeholder="team01">
+      </div>
+      <div class="field">
+        <label>비밀번호</label>
+        <input id="j-pwd" type="password">
+      </div>
+      <button class="btn" onclick="joinRoom()">방 참가</button>
+    </div>
+
+    <div id="tab2" class="tab-panel">
+      <div class="room-list" id="room-list">
+        <div style="padding:16px;text-align:center;color:var(--t3);font-size:12px">로드 중...</div>
+      </div>
+      <button class="btn" style="margin-top:10px" onclick="loadRooms()">새로고침</button>
+    </div>
+
+    <div class="err" id="err"></div>
+  </div>
+</div>
+
+<div id="chat">
+  <div class="sb">
+    <div class="sb-head">
+      <div class="sb-nm" id="sb-nm">Room</div>
+      <div class="sb-code">
+        <span class="sb-code-val" id="sb-code">—</span>
+        <button class="copy-btn" onclick="copyCode()">복사</button>
+      </div>
+    </div>
+    <div class="sb-scroll">
+      <div class="sb-lbl">채팅</div>
+      <div class="tab-list" id="tab-list"></div>
+      <div style="height:1px;background:var(--border);margin:8px 0"></div>
+      <div class="sb-lbl">멤버</div>
+      <div class="mem-list" id="mem-list"></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="hdr" id="hdr">Room</div>
+    <div class="msgs" id="msgs"></div>
+    <div class="inp-area">
+      <div class="inp-wrap">
+        <textarea id="inp" class="inp" rows="1" placeholder="메시지 입력..."></textarea>
+        <button class="send" onclick="sendMsg()">↑</button>
+      </div>
+      <div class="hint">Enter: 전송 · Shift+Enter: 줄바꿈</div>
+    </div>
+  </div>
+</div>
+
+<script>
+var peer = null;
+var myId = null;
+var myName = null;
+var myColor = null;
+var conns = {};
+var users = {};
+var isHost = false;
+var roomCode = null;
+var roomName = null;
+var roomPwd = null;
+var roomPublic = false;
+
+var currentTab = "group";
+var groupMsgs = [];
+var dmMsgs = {};
+
+var COLORS = ["#5b8def","#7c5ef5","#4ade80","#f59e0b","#ec4899","#06b6d4","#f97316","#a855f7","#10b981","#ef4444"];
+var colorIdx = 0;
+
+function showErr(msg) {
+  var e = document.getElementById("err");
+  e.textContent = "✗ " + msg;
+  e.style.display = "block";
+  console.error(msg);
+}
+
+function hideErr() {
+  document.getElementById("err").style.display = "none";
+}
+
+function switchTab(n) {
+  document.querySelectorAll(".tab-btn").forEach((b,i) => b.classList.toggle("active", i === n));
+  document.querySelectorAll(".tab-panel").forEach((p,i) => p.classList.toggle("active", i === n));
+  hideErr();
+  if(n === 2) loadRooms();
+}
+
+function createRoom() {
+  var u = document.getElementById("uname").value.trim();
+  var n = document.getElementById("c-nm").value.trim();
+  var c = document.getElementById("c-code").value.trim().toLowerCase();
+  var p = document.getElementById("c-pwd").value;
+  var pub = document.getElementById("c-pub").checked;
+
+  if(!u) { showErr("닉네임을 입력하세요"); return; }
+  if(!n) { showErr("방 이름을 입력하세요"); return; }
+  if(!c || !/^[a-z0-9]{3,15}$/.test(c)) { showErr("코드: 3-15자, 영문소문자+숫자"); return; }
+
+  myName = u;
+  isHost = true;
+  roomCode = c;
+  roomName = n;
+  roomPwd = p;
+  roomPublic = pub;
+
+  console.log("Creating room:", roomCode);
+  initPeer("mch-" + c, function() {
+    if(pub) addRoom(c, n);
+    enterChat();
+  });
+}
+
+function joinRoom() {
+  var u = document.getElementById("uname").value.trim();
+  var c = document.getElementById("j-code").value.trim().toLowerCase();
+  var p = document.getElementById("j-pwd").value;
+
+  if(!u) { showErr("닉네임을 입력하세요"); return; }
+  if(!c || !/^[a-z0-9]{3,15}$/.test(c)) { showErr("코드를 확인하세요"); return; }
+
+  myName = u;
+  isHost = false;
+  roomCode = c;
+  roomPwd = p;
+  roomPublic = false;
+
+  console.log("Joining room:", roomCode);
+  initPeer(null, function() {
+    connectToHost("mch-" + c, p);
+  });
+}
+
+function initPeer(peerId, callback) {
+  var config = {
+    config: {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+        { urls: "stun:stun3.l.google.com:19302" },
+        { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+        { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" }
+      ]
+    }
+  };
+
+  peer = peerId ? new Peer(peerId, config) : new Peer(config);
+
+  peer.on("open", function(id) {
+    console.log("Peer opened:", id);
+    myId = id;
+    myColor = COLORS[colorIdx++ % COLORS.length];
+    users[id] = { name: myName, color: myColor };
+
+    peer.on("connection", function(conn) {
+      console.log("Incoming connection from:", conn.peer);
+      conns[conn.peer] = conn;
+      conn.on("data", function(data) { handleData(data, conn.peer); });
+      conn.on("close", function() { handleLeave(conn.peer); });
+    });
+
+    callback();
+  });
+
+  peer.on("error", function(err) {
+    console.error("PeerJS error:", err);
+    var msg = "연결 오류: " + (err.message || err.type);
+    if(err.type === "peer-unavailable") msg = "방을 찾을 수 없습니다";
+    if(err.type === "unavailable-id") msg = "코드가 이미 사용 중입니다";
+    showErr(msg);
+  });
+}
+
+function connectToHost(hostId, pwd) {
+  console.log("Connecting to host:", hostId);
+  var conn = peer.connect(hostId, { reliable: true });
+  conns[hostId] = conn;
+
+  conn.on("open", function() {
+    console.log("Connected to host");
+    conn.on("data", function(d) { handleData(d, hostId); });
+    conn.on("close", function() { handleLeave(hostId); });
+    conn.send({ type: "join", peerId: myId, name: myName, pwd: pwd });
+  });
+
+  conn.on("error", function(err) {
+    console.error("Connection error:", err);
+    showErr("호스트 연결 실패");
+  });
+}
+
+function connectToPeer(peerId) {
+  if(conns[peerId] || peerId === myId) return;
+  console.log("Connecting to peer:", peerId);
+
+  var conn = peer.connect(peerId, { reliable: true });
+  conns[peerId] = conn;
+
+  conn.on("open", function() {
+    console.log("Connected to peer:", peerId);
+    conn.on("data", function(d) { handleData(d, peerId); });
+    conn.on("close", function() { handleLeave(peerId); });
+    conn.send({ type: "hello", peerId: myId, name: myName, color: myColor });
+  });
+}
+
+function handleData(data, from) {
+  console.log("Data received:", data.type, "from:", from);
+
+  if(data.type === "join") {
+    if(Object.keys(users).length >= 10) {
+      sendTo(from, { type: "full" });
+      return;
+    }
+    if(roomPwd && data.pwd !== roomPwd) {
+      sendTo(from, { type: "auth_fail" });
+      return;
+    }
+    var col = COLORS[colorIdx++ % COLORS.length];
+    users[data.peerId] = { name: data.name, color: col };
+    addSystemMsg(data.name + "님이 입장했습니다");
+    sendTo(from, { type: "member_list", members: users, code: roomCode, name: roomName });
+    broadcast({ type: "new_member", peerId: data.peerId, name: data.name, color: col }, from);
+    updateUI();
+  }
+  else if(data.type === "member_list") {
+    users = data.members;
+    roomCode = data.code;
+    roomName = data.name;
+    enterChat();
+    Object.keys(users).forEach(p => {
+      if(p !== myId && p !== from) connectToPeer(p);
+    });
+  }
+  else if(data.type === "new_member") {
+    if(!users[data.peerId]) users[data.peerId] = { name: data.name, color: data.color };
+    addSystemMsg(data.name + "님이 입장했습니다");
+    connectToPeer(data.peerId);
+    updateUI();
+  }
+  else if(data.type === "hello") {
+    if(!users[data.peerId]) users[data.peerId] = { name: data.name, color: data.color };
+    updateUI();
+  }
+  else if(data.type === "msg") {
+    var u = users[from] || { name: data.from, color: "#999" };
+    var msg = { from: data.from, color: u.color, text: data.text, time: new Date().toLocaleTimeString("ko-KR", {hour:"2-digit",minute:"2-digit"}) };
+    groupMsgs.push(msg);
+    if(currentTab === "group") {
+      addMsgEl(msg);
+      scrollDown();
+    }
+    updateUI();
+  }
+  else if(data.type === "full") showErr("방이 가득 찼습니다");
+  else if(data.type === "auth_fail") { showErr("비밀번호 오류"); peer.destroy(); }
+  else if(data.type === "leave") handleLeave(from);
+}
+
+function sendTo(peerId, data) {
+  try {
+    if(conns[peerId] && conns[peerId].open) conns[peerId].send(data);
+  } catch(e) { console.error(e); }
+}
+
+function broadcast(data, skipPeer) {
+  Object.keys(conns).forEach(p => {
+    if(p !== skipPeer) sendTo(p, data);
+  });
+}
+
+function handleLeave(peerId) {
+  if(!users[peerId]) return;
+  addSystemMsg(users[peerId].name + "님이 퇴장했습니다");
+  delete users[peerId];
+  delete conns[peerId];
+  updateUI();
+}
+
+window.addEventListener("beforeunload", function() {
+  broadcast({ type: "leave" });
+  if(isHost && roomPublic) removeRoom(roomCode);
+});
+
+function enterChat() {
+  document.getElementById("setup").style.display = "none";
+  document.getElementById("chat").classList.add("on");
+  document.getElementById("sb-nm").textContent = roomName || roomCode;
+  document.getElementById("sb-code").textContent = roomCode;
+  document.title = (roomName || roomCode) + " - Mesh Chat";
+  addSystemMsg("방에 입장했습니다. 코드를 공유해 친구를 초대하세요.");
+  renderMsgs();
+  updateUI();
+  scrollDown();
+
+  document.getElementById("inp").addEventListener("keydown", function(e) {
+    if(e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMsg();
+    }
+  });
+  document.getElementById("inp").focus();
+}
+
+function updateUI() {
+  var cnt = Object.keys(users).length;
+  document.getElementById("hdr").textContent = (roomName || roomCode) + " (" + cnt + "명)";
+
+  var html = '<div class="tab-item' + (currentTab === "group" ? " active" : "") + '" onclick="switchTab2(\"group\")">전체</div>';
+  
+  document.getElementById("tab-list").innerHTML = html;
+
+  var memHtml = "";
+  Object.keys(users).forEach(p => {
+    var u = users[p];
+    memHtml += '<div class="mem-item">' +
+      '<div class="mem-dot" style="background:' + u.color + '"></div>' +
+      '<span>' + esc(u.name) + (p === myId ? " (나)" : "") + '</span>' +
+      '</div>';
+  });
+  document.getElementById("mem-list").innerHTML = memHtml;
+}
+
+function switchTab2(t) {
+  currentTab = t;
+  renderMsgs();
+  scrollDown();
+  document.getElementById("inp").focus();
+}
+
+function renderMsgs() {
+  var box = document.getElementById("msgs");
+  box.innerHTML = "";
+  if(currentTab === "group") {
+    groupMsgs.forEach(m => {
+      if(m.sys) {
+        box.appendChild(createSysEl(m.text));
+      } else {
+        box.appendChild(createMsgEl(m));
+      }
+    });
+  }
+}
+
+function createSysEl(text) {
+  var el = document.createElement("div");
+  el.style.cssText = "text-align:center;font-size:10px;color:var(--t3);padding:4px 0";
+  el.textContent = text;
+  return el;
+}
+
+function createMsgEl(msg) {
+  var el = document.createElement("div");
+  el.className = "msg";
+  el.innerHTML = '<div class="msg-av" style="background:' + msg.color + '">' + msg.from[0].toUpperCase() + '</div>' +
+    '<div class="msg-content">' +
+    '<div class="msg-from">' + esc(msg.from) + '</div>' +
+    '<div class="msg-txt">' + esc(msg.text) + '</div>' +
+    '<div class="msg-time">' + msg.time + '</div>' +
+    '</div>';
+  return el;
+}
+
+function addMsgEl(msg) {
+  document.getElementById("msgs").appendChild(createMsgEl(msg));
+}
+
+function addSystemMsg(text) {
+  groupMsgs.push({ sys: true, text: text });
+  if(currentTab === "group") {
+    document.getElementById("msgs").appendChild(createSysEl(text));
+    scrollDown();
+  }
+}
+
+function scrollDown() {
+  var box = document.getElementById("msgs");
+  setTimeout(() => { box.scrollTop = box.scrollHeight; }, 10);
+}
+
+function sendMsg() {
+  var inp = document.getElementById("inp");
+  var text = inp.value.trim();
+  if(!text) return;
+
+  var msg = { from: myName, color: myColor, text: text, time: new Date().toLocaleTimeString("ko-KR", {hour:"2-digit",minute:"2-digit"}) };
+  groupMsgs.push(msg);
+  broadcast({ type: "msg", from: myName, text: text });
+  addMsgEl(msg);
+  scrollDown();
+  inp.value = "";
+}
+
+function copyCode() {
+  navigator.clipboard.writeText(roomCode).then(() => {
+    var btn = document.querySelector(".copy-btn");
+    btn.textContent = "✓";
+    setTimeout(() => { btn.textContent = "복사"; }, 1500);
+  });
+}
+
+// LocalStorage 방 관리
+function addRoom(code, name) {
+  var rooms = JSON.parse(localStorage.getItem("meshRooms") || "[]");
+  rooms = rooms.filter(r => r.code !== code);
+  rooms.unshift({ code: code, name: name, time: Date.now() });
+  if(rooms.length > 20) rooms = rooms.slice(0, 20);
+  localStorage.setItem("meshRooms", JSON.stringify(rooms));
+}
+
+function removeRoom(code) {
+  var rooms = JSON.parse(localStorage.getItem("meshRooms") || "[]");
+  rooms = rooms.filter(r => r.code !== code);
+  localStorage.setItem("meshRooms", JSON.stringify(rooms));
+}
+
+function loadRooms() {
+  var rooms = JSON.parse(localStorage.getItem("meshRooms") || "[]");
+  var html = "";
+  if(rooms.length === 0) {
+    html = '<div style="padding:20px;text-align:center;color:var(--t3)">공개 방이 없습니다</div>';
+  } else {
+    rooms.forEach(r => {
+      html += '<div class="room-item" onclick="quickJoin(\"' + r.code + '\")">' +
+        '<div class="room-nm">' + esc(r.name) + '</div>' +
+        '<div class="room-code">' + r.code + '</div>' +
+        '</div>';
+    });
+  }
+  document.getElementById("room-list").innerHTML = html;
+}
+
+function quickJoin(code) {
+  document.getElementById("j-code").value = code;
+  switchTab(1);
+}
+
+function esc(s) {
+  return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+</script>
+</body>
 </html>
