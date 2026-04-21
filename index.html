@@ -395,13 +395,13 @@ function openD(pId){switchT(pId);}
 function ui(){
   var cnt = Object.keys(users).length;
   document.getElementById("cnt-mem").textContent = cnt;
-  var h = '<div class="ctab'+(tab==="group"?" active":'')+'" onclick="switchT('group')">'+
+  var h = '<div class="ctab'+(tab==="group"?" active":'')+'" onclick="switchT(&quot;group&quot;)">'+
     '<span class="ctab-ic">#</span><span class="ctab-nm">General</span>'+(unG?'<span class="badge">'+unG+"</span>":"")+
     '</div>';
   dUsers.forEach(pId=>{
     var u = users[pId];if(!u)return;
     var un = unD[pId]||0;
-    h += '<div class="ctab'+(tab===pId?" active":'')+'" onclick="switchT(''+pId+'')">'+
+    h += '<div class="ctab'+(tab===pId?" active":'')+'" onclick="switchT(&quot;'+pId+'&quot;)">'+
       '<div class="ctab-av" style="background:'+u.color+'">'+u.name[0].toUpperCase()+'</div>'+
       '<span class="ctab-nm">'+esc(u.name)+'</span>'+(un?'<span class="badge">'+un+"</span>":"")+
       '</div>';
@@ -411,7 +411,7 @@ function ui(){
   document.getElementById("mems").innerHTML = Object.keys(users).map(pId=>{
     var u = users[pId];
     return '<div class="m-item'+(pId===myId?" me":"")+'" '+
-      (pId!==myId?' onclick="openD(''+pId+'')"':'')+'>'+
+      (pId!==myId?' onclick="openD(&quot;'+pId+'&quot;)"':'')+'>'+
       '<div class="m-dot" style="background:'+u.color+'"></div>'+
       '<div class="m-nm" style="color:'+u.color+'">'+esc(u.name)+'</div>'+
       '<div class="m-tag">'+(pId===myId?"You":"DM")+'</div></div>';
@@ -450,7 +450,7 @@ function mkm(m){
              m.file.size>1024?(m.file.size/1024).toFixed(1)+"KB":m.file.size+"B";
     row.innerHTML = '<div class="av" style="background:'+m.color+'">'+init+'</div>'+
       '<div class="content">'+(!m.own?'<div class="from">'+esc(m.name)+'</div>':'')+
-      '<div class="file-box" onclick="dnl(''+m.file.url+'',''+m.file.name+'')">'+
+      '<div class="file-box" onclick="dnl(&quot;'+m.file.url+'&quot;,&quot;'+m.file.name+'&quot;)">'+
       '<div class="file-icon">📥</div><div class="file-info"><div class="file-nm">'+m.file.name+
       '</div><div class="file-sz">'+sz+'</div></div></div><div class="tm">'+tf+"</div></div>";
   }else{
