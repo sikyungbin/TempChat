@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mesh Chat — P2P 메신저</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:       #0d0f14;
+  --s1:       #151820;
+  --s2:       #1c2030;
+  --border:   #252a3a;
+  --accent:   #5b8def;
+  --accent2:  #7c5ef5;
+  --text:     #e8eaf0;
+  --text2:    #8890a8;
+  --text3:    #4a5068;
+  --glow:     rgba(91,141,239,0.15);
+  --font:     'Sora', sans-serif;
+  --mono:     'JetBrains Mono', monospace;
+}
+body { background: var(--bg); color: var(--text); font-family: var(--font); height: 100vh; overflow: hidden; }
+
+/* ── SETUP ── */
+#setup {
+  display: flex; align-items: center; justify-content: center; height: 100vh;
+  background:
+    radial-gradient(ellipse at 25% 55%, rgba(91,141,239,.07) 0%, transparent 65%),
+    radial-gradient(ellipse at 75% 30%, rgba(124,94,245,.07) 0%, transparent 65%),
+    var(--bg);
+}
+.card {
+  width: 430px; background: var(--s1); border: 1px solid var(--border);
+  border-radius: 22px; padding: 38px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.02);
+}
+.logo { text-align: center; margin-bottom: 32px; }
+.logo-icon {
+  width: 60px; height: 60px; border-radius: 18px; margin: 0 auto 14px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px; box-shadow: 0 8px 28px var(--glow);
+}
+.logo-title { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
+.logo-sub { font-size: 12px; color: var(--text3); margin-top: 5px; }
+
+.field { margin-bottom: 16px; }
+.field label {
+  display: block; font-size: 10px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--text3); margin-bottom: 7px;
+}
+.field input {
+  width: 100%; padding: 12px 16px; background: var(--s2);
+  border: 1px solid var(--border); border-radius: 12px;
+  color: var(--text); font-family: var(--font); font-size: 14px; outline: none;
+  transition: border-color .2s, box-shadow .2s;
+}
+.field input:focus { border-color: rgba(91,141,239,.5); box-shadow: 0 0 0 3px rgba(91,141,239,.08); }
+.field input::placeholder { color: var(--text3); }
+.field input.mono { font-family: var(--mono); font-size: 13px; }
+
+.tabs {
+  display: flex; gap: 4px; background: var(--s2);
+  border-radius: 12px; padding: 4px; margin-bottom: 20px;
+}
+.tab-btn {
+  flex: 1; padding: 9px; border: none; border-radius: 9px;
+  background: transparent; color: var(--text3); font-family: var(--font);
+  font-size: 13px; font-weight: 500; cursor: pointer; transition: all .2s;
+}
+.tab-btn.active { background: var(--s1); color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.btn {
+  width: 100%; padding: 13px; border: none; border-radius: 12px;
+  font-family: var(--font); font-size: 14px; font-weight: 600; cursor: pointer; transition: all .2s;
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #fff; box-shadow: 0 4px 16px var(--glow);
+}
+.btn-primary:hover:not(:disabled) { opacity: .9; transform: translateY(-1px); box-shadow: 0 6px 22px var(--glow); }
+.btn-primary:active:not(:disabled) { transform: translateY(0); }
+.btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+
+.setup-err {
+  margin-top: 14px; padding: 11px 15px; display: none;
+  background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25);
+  border-radius: 10px; color: #f87171; font-size: 12px;
+}
+
+/* ── CHAT ── */
+#chat { display: none; height: 100vh; }
+#chat.on { display: flex; }
+
+.sidebar {
+  width: 230px; min-width: 230px; background: var(--s1);
+  border-right: 1px solid var(--border); display: flex; flex-direction: column;
+}
+.sidebar-top {
+  padding: 20px 16px 14px; border-bottom: 1px solid var(--border);
+}
+.sec-label {
+  font-size: 10px; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text3); margin-bottom: 8px;
+}
+.code-box {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--s2); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px;
+}
+.code-text { flex: 1; font-family: var(--mono); font-size: 10px; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.copy-btn {
+  flex-shrink: 0; padding: 3px 8px; background: var(--border); border: none;
+  border-radius: 6px; color: var(--text2); font-size: 11px; cursor: pointer; transition: all .15s;
+}
+.copy-btn:hover { background: var(--accent); color: #fff; }
+
+.member-sec { flex: 1; overflow-y: auto; padding: 14px 12px; }
+.member-sec::-webkit-scrollbar { width: 3px; }
+.member-sec::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.m-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 9px; border-radius: 10px; margin-bottom: 2px; transition: background .15s;
+}
+.m-item.me { background: var(--s2); }
+.m-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.m-name { font-size: 13px; font-weight: 500; }
+.m-tag { margin-left: auto; font-size: 10px; color: var(--text3); font-family: var(--mono); }
+
+/* messages pane */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.chat-hdr {
+  padding: 17px 26px; border-bottom: 1px solid var(--border);
+  background: var(--s1); display: flex; align-items: center; gap: 13px; flex-shrink: 0;
+}
+.hdr-icon {
+  width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex; align-items: center; justify-content: center; font-size: 17px;
+  box-shadow: 0 4px 14px var(--glow);
+}
+.hdr-name { font-size: 15px; font-weight: 600; }
+.hdr-meta { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.hdr-meta b { color: var(--accent); font-weight: 500; }
+
+.msgs { flex: 1; overflow-y: auto; padding: 22px 26px; display: flex; flex-direction: column; gap: 14px; }
+.msgs::-webkit-scrollbar { width: 4px; }
+.msgs::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.mrow { display: flex; gap: 10px; align-items: flex-start; animation: mIn .22s ease-out; }
+@keyframes mIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.mrow.own { flex-direction: row-reverse; }
+
+.mav {
+  width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: #fff;
+}
+.mbody { max-width: 62%; }
+.mrow.own .mbody { display: flex; flex-direction: column; align-items: flex-end; }
+.mfrom { font-size: 11px; font-weight: 600; margin-bottom: 4px; }
+.bubble {
+  padding: 10px 14px; border-radius: 14px; font-size: 14px;
+  line-height: 1.58; word-break: break-word; white-space: pre-wrap;
+}
+.bubble.them { background: var(--s2); border: 1px solid var(--border); border-top-left-radius: 4px; }
+.bubble.own { border-top-right-radius: 4px; }
+.mtime { font-size: 10px; color: var(--text3); margin-top: 4px; font-family: var(--mono); }
+
+.sys { text-align: center; font-size: 11px; color: var(--text3); font-family: var(--mono); padding: 2px 0; }
+
+/* input */
+.inp-area { padding: 12px 26px 22px; border-top: 1px solid var(--border); background: var(--s1); flex-shrink: 0; }
+.inp-wrap {
+  display: flex; align-items: flex-end; gap: 10px;
+  background: var(--s2); border: 1px solid var(--border);
+  border-radius: 15px; padding: 10px 10px 10px 17px;
+  transition: border-color .2s, box-shadow .2s;
+}
+.inp-wrap:focus-within { border-color: rgba(91,141,239,.45); box-shadow: 0 0 0 3px rgba(91,141,239,.07); }
+.inp-field {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: var(--text); font-family: var(--font); font-size: 14px;
+  resize: none; max-height: 120px; line-height: 1.5; overflow-y: auto;
+}
+.inp-field::placeholder { color: var(--text3); }
+.inp-field::-webkit-scrollbar { width: 3px; }
+.inp-field::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.send-btn {
+  width: 36px; height: 36px; border-radius: 10px; border: none; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #fff; font-size: 17px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px var(--glow); transition: all .2s;
+}
+.send-btn:hover:not(:disabled) { opacity: .9; transform: translateY(-1px); }
+.send-btn:active:not(:disabled) { transform: translateY(0); }
+.send-btn:disabled { opacity: .3; cursor: not-allowed; transform: none; }
+.inp-hint { font-size: 10px; color: var(--text3); text-align: center; margin-top: 8px; font-family: var(--mono); }
+</style>
+</head>
+<body>
+
+<!-- ── SETUP ── -->
+<div id="setup">
+  <div class="card">
+    <div class="logo">
+      <div class="logo-icon">⬡</div>
+      <div class="logo-title">Mesh Chat</div>
+      <div class="logo-sub">WebRTC P2P · 서버 없이 직접 연결 · 최대 10명</div>
+    </div>
+
+    <div class="field">
+      <label>닉네임</label>
+      <input id="uname" type="text" placeholder="사용할 이름을 입력하세요" maxlength="20" autocomplete="off">
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('create')">방 만들기</button>
+      <button class="tab-btn" onclick="switchTab('join')">방 참가하기</button>
+    </div>
+
+    <div id="tab-create" class="tab-panel active">
+      <button id="create-btn" class="btn btn-primary" onclick="createRoom()">방 생성하기</button>
+    </div>
+
+    <div id="tab-join" class="tab-panel">
+      <div class="field">
+        <label>방 코드</label>
+        <input id="rcode-in" class="mono" type="text" placeholder="공유받은 방 코드를 붙여넣으세요" autocomplete="off">
+      </div>
+      <button id="join-btn" class="btn btn-primary" onclick="joinRoomClick()">방 참가하기</button>
+    </div>
+
+    <div class="setup-err" id="setup-err"></div>
+  </div>
+</div>
+
+<!-- ── CHAT ── -->
+<div id="chat">
+  <div class="sidebar">
+    <div class="sidebar-top">
+      <div class="sec-label">방 코드</div>
+      <div class="code-box">
+        <div class="code-text" id="rcode-display">—</div>
+        <button class="copy-btn" onclick="copyCode()">복사</button>
+      </div>
+    </div>
+    <div class="member-sec">
+      <div class="sec-label" style="padding:0 4px; margin-bottom:10px">
+        참가자 <span id="mcnt" style="color:var(--accent)">0</span>명
+      </div>
+      <div id="mlist"></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="chat-hdr">
+      <div class="hdr-icon">⬡</div>
+      <div>
+        <div class="hdr-name">Mesh Chat</div>
+        <div class="hdr-meta">P2P 직접 연결 · <b id="conn-text">대기 중</b></div>
+      </div>
+    </div>
+
+    <div class="msgs" id="msgs">
+      <div class="sys">방에 입장했습니다. 방 코드를 복사해 친구를 초대하세요.</div>
+    </div>
+
+    <div class="inp-area">
+      <div class="inp-wrap">
+        <textarea id="inp" class="inp-field" rows="1" placeholder="메시지를 입력하세요…"></textarea>
+        <button class="send-btn" onclick="sendMsg()">↑</button>
+      </div>
+      <div class="inp-hint">Enter 전송 · Shift+Enter 줄바꿈</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+let peer, myPeerId, myUsername;
+let conns   = {};   // peerId → DataConnection
+let members = {};   // peerId → { username, color }
+let isHost  = false;
+let roomCode = null;
+
+const PALETTE = [
+  '#5b8def','#7c5ef5','#4ade80','#f59e0b','#ec4899',
+  '#06b6d4','#f97316','#a855f7','#10b981','#ef4444'
+];
+let cIdx = 0;
+const nextColor = () => PALETTE[cIdx++ % PALETTE.length];
+
+// ─── Setup UI ────────────────────────────────────────────────────────────────
+function switchTab(t) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) =>
+    b.classList.toggle('active', t === (i === 0 ? 'create' : 'join')));
+  document.getElementById('tab-create').classList.toggle('active', t === 'create');
+  document.getElementById('tab-join').classList.toggle('active', t === 'join');
+  hideErr();
+}
+
+function showErr(msg) {
+  const el = document.getElementById('setup-err');
+  el.textContent = '⚠ ' + msg;
+  el.style.display = 'block';
+}
+function hideErr() { document.getElementById('setup-err').style.display = 'none'; }
+
+function setLoading(btnId, loading, label) {
+  const b = document.getElementById(btnId);
+  b.disabled = loading;
+  b.textContent = loading ? '연결 중…' : label;
+}
+
+// ─── Create Room ─────────────────────────────────────────────────────────────
+function createRoom() {
+  const u = document.getElementById('uname').value.trim();
+  if (!u) { showErr('닉네임을 입력해주세요.'); return; }
+  myUsername = u; isHost = true;
+  setLoading('create-btn', true, '방 생성하기');
+  initPeer(() => {
+    roomCode = myPeerId;
+    enterChat();
+  });
+}
+
+// ─── Join Room ────────────────────────────────────────────────────────────────
+function joinRoomClick() {
+  const u = document.getElementById('uname').value.trim();
+  const c = document.getElementById('rcode-in').value.trim();
+  if (!u) { showErr('닉네임을 입력해주세요.'); return; }
+  if (!c) { showErr('방 코드를 입력해주세요.'); return; }
+  myUsername = u; isHost = false; roomCode = c;
+  setLoading('join-btn', true, '방 참가하기');
+  initPeer(() => connectToHost(c));
+}
+
+// ─── Init PeerJS ─────────────────────────────────────────────────────────────
+function initPeer(onOpen) {
+  peer = new Peer({ debug: 0 });
+
+  peer.on('open', id => {
+    myPeerId = id;
+    members[id] = { username: myUsername, color: nextColor() };
+    peer.on('connection', handleIncoming);
+    onOpen();
+  });
+
+  peer.on('error', err => {
+    const msg =
+      err.type === 'peer-unavailable' ? '방 코드가 잘못되었거나 호스트가 오프라인입니다.' :
+      err.type === 'network'          ? '네트워크 오류가 발생했습니다.' :
+      '오류: ' + (err.message || err.type);
+    showErr(msg);
+    setLoading('create-btn', false, '방 생성하기');
+    setLoading('join-btn',   false, '방 참가하기');
+  });
+}
+
+// ─── Connect to Host ──────────────────────────────────────────────────────────
+function connectToHost(hostId) {
+  const conn = peer.connect(hostId, { reliable: true });
+  conns[hostId] = conn;
+
+  conn.on('open', () => {
+    conn.on('data',  d  => handleData(d, hostId));
+    conn.on('close', () => handleLeave(hostId));
+    conn.send({ type: 'join', peerId: myPeerId, username: myUsername });
+  });
+
+  conn.on('error', e => showErr('호스트 연결 실패: ' + e));
+}
+
+// ─── Incoming connection (any peer) ──────────────────────────────────────────
+function handleIncoming(conn) {
+  conn.on('open', () => {
+    conns[conn.peer] = conn;
+    conn.on('data',  d  => handleData(d, conn.peer));
+    conn.on('close', () => handleLeave(conn.peer));
+  });
+}
+
+// ─── Mesh: connect directly to a peer ────────────────────────────────────────
+function connectToPeer(pid) {
+  if (conns[pid] || pid === myPeerId) return;
+  const conn = peer.connect(pid, { reliable: true });
+  conns[pid] = conn;
+  conn.on('open', () => {
+    conn.on('data',  d  => handleData(d, pid));
+    conn.on('close', () => handleLeave(pid));
+    conn.send({ type: 'hello', peerId: myPeerId, username: myUsername, color: members[myPeerId].color });
+  });
+}
+
+// ─── Data Handler ─────────────────────────────────────────────────────────────
+function handleData(data, from) {
+  switch (data.type) {
+
+    // New user asks host for the room
+    case 'join': {
+      if (Object.keys(members).length >= 10) {
+        conns[from]?.send({ type: 'full' });
+        return;
+      }
+      const color = nextColor();
+      members[data.peerId] = { username: data.username, color };
+      refreshMembers();
+      addSys(`${esc(data.username)}님이 입장했습니다`);
+      // Send full member list to joiner
+      conns[from]?.send({ type: 'member_list', members, roomCode });
+      // Notify all others
+      broadcast({ type: 'new_member', peerId: data.peerId, username: data.username, color }, from);
+      break;
+    }
+
+    // Received from host: full member list
+    case 'member_list': {
+      members  = data.members;
+      roomCode = data.roomCode;
+      enterChat();
+      // Connect directly to every existing peer (mesh)
+      Object.keys(members).forEach(pid => {
+        if (pid !== myPeerId && pid !== from) connectToPeer(pid);
+      });
+      break;
+    }
+
+    // Existing member learns about a new joiner
+    case 'new_member': {
+      if (!members[data.peerId]) {
+        members[data.peerId] = { username: data.username, color: data.color };
+        refreshMembers();
+        addSys(`${esc(data.username)}님이 입장했습니다`);
+      }
+      connectToPeer(data.peerId);
+      break;
+    }
+
+    // Peer introduces itself on direct mesh connection
+    case 'hello': {
+      if (!members[data.peerId])
+        members[data.peerId] = { username: data.username, color: data.color };
+      refreshMembers();
+      break;
+    }
+
+    // Chat message
+    case 'chat': {
+      const m = members[from] || { username: data.from, color: '#aaa' };
+      addMsg(m, data.text, data.time, false);
+      break;
+    }
+
+    // Room full
+    case 'full': {
+      showErr('방이 가득 찼습니다 (최대 10명).'); break;
+    }
+
+    case 'leave': handleLeave(from); break;
+  }
+}
+
+// ─── Broadcast ────────────────────────────────────────────────────────────────
+function broadcast(data, skip = null) {
+  Object.entries(conns).forEach(([pid, c]) => {
+    if (pid !== skip && c?.open) try { c.send(data); } catch (_) {}
+  });
+}
+
+// ─── Peer left ────────────────────────────────────────────────────────────────
+function handleLeave(pid) {
+  if (!members[pid]) return;
+  addSys(`${esc(members[pid].username)}님이 퇴장했습니다`);
+  delete members[pid];
+  delete conns[pid];
+  refreshMembers();
+}
+
+window.addEventListener('beforeunload', () => broadcast({ type: 'leave' }));
+
+// ─── Enter Chat ───────────────────────────────────────────────────────────────
+function enterChat() {
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('chat').classList.add('on');
+  document.getElementById('rcode-display').textContent = roomCode;
+  refreshMembers();
+
+  const inp = document.getElementById('inp');
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+    setTimeout(() => { inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight, 120) + 'px'; }, 0);
+  });
+  inp.focus();
+}
+
+// ─── Member List ──────────────────────────────────────────────────────────────
+function refreshMembers() {
+  const cnt = Object.keys(members).length;
+  document.getElementById('mcnt').textContent = cnt;
+  document.getElementById('conn-text').textContent = (cnt - 1) + '명 연결됨';
+
+  document.getElementById('mlist').innerHTML = Object.entries(members)
+    .map(([pid, m]) => `
+      <div class="m-item${pid === myPeerId ? ' me' : ''}">
+        <div class="m-dot" style="background:${m.color}; box-shadow:0 0 6px ${m.color}80"></div>
+        <div class="m-name" style="color:${m.color}">${esc(m.username)}</div>
+        ${pid === myPeerId ? '<div class="m-tag">나</div>' : ''}
+      </div>`).join('');
+}
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+function addSys(html) {
+  const el = document.createElement('div');
+  el.className = 'sys';
+  el.innerHTML = html;
+  appendEl(el);
+}
+
+function addMsg(member, text, timeStr, isOwn) {
+  const t = timeStr ? new Date(timeStr) : new Date();
+  const tf = t.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  const init = member.username.charAt(0).toUpperCase();
+
+  const row = document.createElement('div');
+  row.className = 'mrow' + (isOwn ? ' own' : '');
+
+  const ownBg    = isOwn ? `background:${member.color}20; border:1px solid ${member.color}35` : '';
+  const fromHtml = isOwn ? '' : `<div class="mfrom" style="color:${member.color}">${esc(member.username)}</div>`;
+
+  row.innerHTML = `
+    <div class="mav" style="background:${member.color}">${init}</div>
+    <div class="mbody">
+      ${fromHtml}
+      <div class="bubble ${isOwn ? 'own' : 'them'}" style="${ownBg}">${esc(text)}</div>
+      <div class="mtime">${tf}</div>
+    </div>`;
+  appendEl(row);
+}
+
+function appendEl(el) {
+  const box = document.getElementById('msgs');
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+// ─── Send ─────────────────────────────────────────────────────────────────────
+function sendMsg() {
+  const inp  = document.getElementById('inp');
+  const text = inp.value.trim();
+  if (!text) return;
+
+  const time = new Date().toISOString();
+  broadcast({ type: 'chat', from: myUsername, text, time });
+  addMsg(members[myPeerId] || { username: myUsername, color: PALETTE[0] }, text, time, true);
+
+  inp.value = '';
+  inp.style.height = 'auto';
+}
+
+// ─── Copy Code ────────────────────────────────────────────────────────────────
+function copyCode() {
+  navigator.clipboard.writeText(roomCode).then(() => {
+    const b = document.querySelector('.copy-btn');
+    b.textContent = '✓ 복사됨';
+    setTimeout(() => b.textContent = '복사', 1800);
+  });
+}
+
+// ─── Util ─────────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
